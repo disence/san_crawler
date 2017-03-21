@@ -8,6 +8,7 @@ import logging
 
 
 def write_into_redis(
+    chengdu = datetime.timezone(datetime.timedelta(hours=8))
     redis_client, wwpn, fid,
     port_index, switch_name,
     ip, vendor
@@ -20,7 +21,7 @@ def write_into_redis(
         redis_client.hset(
             wwpn,
             'timestamp',
-            datetime.datetime.now().strftime('%c')
+            datetime.datetime.now(chengdu).strftime('%c')
         )
 
 
