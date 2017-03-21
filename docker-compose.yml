@@ -3,13 +3,19 @@ services:
   web:
     build: frontend/web_client
     ports:
-      - "23333:80"
+      - "80"
+    depends_on:
+      - web-insterface
   web-interface:
     build: backend/web-interface
     ports:
-      - "8888:8888"
+      - "8888"
+    depends_on:
+      -redis
   crawler:
     build: backend/crawler
+    depends_on:
+      -redis
   redis:
     image: "redis:3.0"
     ports:
