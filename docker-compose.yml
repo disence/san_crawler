@@ -9,7 +9,7 @@ services:
   web-interface:
     build: backend/web-interface
     ports:
-      - "8888"
+      - "8888:8888"
     depends_on:
       - redis
   crawler:
@@ -18,5 +18,3 @@ services:
       - redis
   redis:
     image: "redis:3.0"
-    ports:
-      - "6379"
