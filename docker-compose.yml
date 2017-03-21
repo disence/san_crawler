@@ -1,0 +1,18 @@
+version: '2'
+services:
+  web:
+    build: frontend/web_client
+    ports:
+      - "23333:80"
+  web-interface:
+    build: backend/web-interface
+    ports:
+      - "8888:8888"
+    links:
+      - redis
+  crawler:
+    build: backend/crawler
+    links:
+      - redis
+  redis:
+    image: "redis:3.0"

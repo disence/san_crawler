@@ -1,0 +1,34 @@
+<div class="row top30">
+			<div class="col-md-6 col-md-offset-2">
+					<div id="custom-search-input">
+							<div class="input-group col-md-12">
+									<input type="text" class="form-control input-lg" placeholder="Search..." ng-change="$ctrl.change()" ng-model="$ctrl.querystr" ng-model-options="{ debounce: 1000 }"/>
+									<span class="input-group-btn">
+											<button class="btn btn-info btn-lg" type="button">
+													<i class="glyphicon glyphicon-search"></i>
+											</button>
+									</span>
+							</div>
+					</div>
+			</div>
+</div>
+
+<div class="row top10">
+	<div class="col-md-8 col-md-offset-2">
+		<ul class="list-inline">
+			<li ng-repeat="item in $ctrl.result" class="top5">
+				<button  ng-class="$ctrl.selected == item ? 'btn btn-primary' : 'btn btn-default'" ng-click="$ctrl.showDetails(item)">{{ item }}</button>
+			</li>
+		</ul>
+	</div>
+</div>
+<div class="row top10">
+	<div class="col-md-8 col-md-offset-2">
+		<table class="table">
+			<tr ng-repeat="(k, v) in $ctrl.details">
+				<td>{{k}}</td>
+				<td>{{v}}</td>
+			</tr>
+		</table>
+	</div>
+</div>

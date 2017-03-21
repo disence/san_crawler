@@ -1,0 +1,81 @@
+import threading
+import redis
+import datetime
+import time
+import os
+from config import search_scope
+import logging
+
+
+def write_into_redis(
+    redis_client, wwpn, fid,
+    port_index, switch_name,
+    ip, vendor
+):
+        redis_client.hset(wwpn, 'vsan_vf', fid)
+        redis_client.hset(wwpn, 'port', port_index)
+        redis_client.hset(wwpn, 'switch_name', switch_name)
+        redis_client.hset(wwpn, 'switch_ip', ip)
+        redis_client.hset(wwpn, 'switch_vendor', vendor)
+        redis_client.hset(
+            wwpn,
+            'timestamp',
+            datetime.datetime.now().strftime('%c')
+        )
+
+
+def worker(switch, redis_client):
+    if not switch.connect():
+        return False
+    if switch.vendor == 'brocade':
+        nscamshow = switch.get_nscamshow()
+        switchshow = switch.get_switchshow()
+        fabricshow = switch.get_fabricshow()
+
+        if switchshow:
+            switch_name = switch.filter_local_switchname(switchshow)
+            fid = switch.filter_local_fid(switchshow)
+            # handle flogin part
+            flogin_wwpns = switch.flogin_wwpn(switchshow)
+
+            for i in flogin_wwpns:
+                write_into_redis(
+                    redis_client, i[0], fid, i[1], switch_name,
+                    switch.ip, switch.vendor
+                )
+            # handle plogin part
+            if nscamshow and fabricshow:
+                fabric_map = switch.fabric_analyze(fabricshow)
+                plogin_wwpns = switch.plogin_wwpn(nscamshow, fabric_map)
+                for i in plogin_wwpns:
+                    write_into_redis(
+                        redis_client, i[0], fid, i[1], i[2],
+                        i[3], switch.vendor
+                    )
+    elif switch.vendor == 'cisco':
+        fcns_database = switch.get_fcns_database()
+        if fcns_database:
+            for i in switch.fcns_analyze(fcns_database):
+                write_into_redis(redis_client, *i, switch.vendor)
+    switch.disconnect()
+
+
+if __name__ == '__main__':
+    r = redis.StrictRedis(
+        host=os.environ['REDIS_PORT_6379_TCP_ADDR'],
+        port=os.environ['REDIS_PORT_6379_TCP_PORT'],
+        db=0
+    )
+    logging.basicConfig(filename='san_crawler.log', level=logging.INFO)
+    while True:
+        threads = []
+        for i in search_scope:
+            threads.append(threading.Thread(target=worker, args=(i, r)))
+
+        for t in threads:
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        time.sleep(300)
