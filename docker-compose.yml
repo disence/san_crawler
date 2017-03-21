@@ -8,11 +8,9 @@ services:
     build: backend/web-interface
     ports:
       - "8888:8888"
-    links:
-      - redis
   crawler:
     build: backend/crawler
-    links:
-      - redis
   redis:
     image: "redis:3.0"
+    ports:
+      - "6379"

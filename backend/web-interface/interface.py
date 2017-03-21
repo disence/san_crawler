@@ -33,8 +33,8 @@ if __name__ == '__main__':
 
     if __name__ == "__main__":
         r = redis.StrictRedis(
-            host=os.environ['REDIS_PORT_6379_TCP_ADDR'],
-            port=os.environ['REDIS_PORT_6379_TCP_PORT'],
+            host='redis',
+            port=6379,
             decode_responses=True,
             db=0
         )

@@ -62,8 +62,8 @@ def worker(switch, redis_client):
 
 if __name__ == '__main__':
     r = redis.StrictRedis(
-        host=os.environ['REDIS_PORT_6379_TCP_ADDR'],
-        port=os.environ['REDIS_PORT_6379_TCP_PORT'],
+        host='redis',
+        port=6379,
         db=0
     )
     logging.basicConfig(filename='san_crawler.log', level=logging.INFO)
