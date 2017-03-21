@@ -8,21 +8,21 @@ import logging
 
 
 def write_into_redis(
-    chengdu = datetime.timezone(datetime.timedelta(hours=8))
     redis_client, wwpn, fid,
     port_index, switch_name,
     ip, vendor
 ):
-        redis_client.hset(wwpn, 'vsan_vf', fid)
-        redis_client.hset(wwpn, 'port', port_index)
-        redis_client.hset(wwpn, 'switch_name', switch_name)
-        redis_client.hset(wwpn, 'switch_ip', ip)
-        redis_client.hset(wwpn, 'switch_vendor', vendor)
-        redis_client.hset(
-            wwpn,
-            'timestamp',
-            datetime.datetime.now(chengdu).strftime('%c')
-        )
+    chengdu = datetime.timezone(datetime.timedelta(hours=8))
+    redis_client.hset(wwpn, 'vsan_vf', fid)
+    redis_client.hset(wwpn, 'port', port_index)
+    redis_client.hset(wwpn, 'switch_name', switch_name)
+    redis_client.hset(wwpn, 'switch_ip', ip)
+    redis_client.hset(wwpn, 'switch_vendor', vendor)
+    redis_client.hset(
+        wwpn,
+        'timestamp',
+        datetime.datetime.now(chengdu).strftime('%c')
+    )
 
 
 def worker(switch, redis_client):
