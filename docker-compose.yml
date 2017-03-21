@@ -3,7 +3,7 @@ services:
   web:
     build: frontend/web_client
     ports:
-      - "80"
+      - "23333:80"
     depends_on:
       - web-interface
   web-interface:
