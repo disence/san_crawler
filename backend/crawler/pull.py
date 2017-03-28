@@ -2,9 +2,9 @@ import threading
 import redis
 import datetime
 import time
-import os
 from config import search_scope
 import logging
+import sys
 
 
 def write_into_redis(
@@ -67,7 +67,10 @@ if __name__ == '__main__':
         port=6379,
         db=0
     )
-    logging.basicConfig(filename='san_crawler.log', level=logging.INFO)
+    logging.basicConfig(
+        handlers=[logging.StreamHandler(sys.stdout)],
+        level=logging.INFO
+    )
     while True:
         threads = []
         for i in search_scope:
