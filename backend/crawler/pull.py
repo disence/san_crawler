@@ -72,6 +72,7 @@ if __name__ == '__main__':
         level=logging.INFO
     )
     while True:
+        logging.info('Pull circle Start')
         threads = []
         for i in search_scope:
             threads.append(threading.Thread(target=worker, args=(i, r)))
@@ -81,5 +82,7 @@ if __name__ == '__main__':
 
         for t in threads:
             t.join()
+
+        logging.info('Pull circle End')
 
         time.sleep(300)
