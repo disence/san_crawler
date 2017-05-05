@@ -29,30 +29,31 @@ def worker(switch, redis_client):
     if not switch.connect():
         return False
     if switch.vendor == 'brocade':
-        nscamshow = switch.get_nscamshow()
-        switchshow = switch.get_switchshow()
-        fabricshow = switch.get_fabricshow()
+        fid_list = switch.fid_filter(switch.get_fid_list())
+        for fid in fid_list:
+            nscamshow = switch.get_nscamshow(fid=fid)
+            switchshow = switch.get_switchshow(fid=fid)
+            fabricshow = switch.get_fabricshow(fid=fid)
 
-        if switchshow:
-            switch_name = switch.filter_local_switchname(switchshow)
-            fid = switch.filter_local_fid(switchshow)
-            # handle flogin part
-            flogin_wwpns = switch.flogin_wwpn(switchshow)
+            if switchshow:
+                switch_name = switch.filter_local_switchname(switchshow)
+                # handle flogin part
+                flogin_wwpns = switch.flogin_wwpn(switchshow)
 
-            for i in flogin_wwpns:
-                write_into_redis(
-                    redis_client, i[0], fid, i[1], switch_name,
-                    switch.ip, switch.vendor
-                )
-            # handle plogin part
-            if nscamshow and fabricshow:
-                fabric_map = switch.fabric_analyze(fabricshow)
-                plogin_wwpns = switch.plogin_wwpn(nscamshow, fabric_map)
-                for i in plogin_wwpns:
+                for i in flogin_wwpns:
                     write_into_redis(
-                        redis_client, i[0], fid, i[1], i[2],
-                        i[3], switch.vendor
+                        redis_client, i[0], fid, i[1], switch_name,
+                        switch.ip, switch.vendor
                     )
+                # handle plogin part
+                if nscamshow and fabricshow:
+                    fabric_map = switch.fabric_analyze(fabricshow)
+                    plogin_wwpns = switch.plogin_wwpn(nscamshow, fabric_map)
+                    for i in plogin_wwpns:
+                        write_into_redis(
+                            redis_client, i[0], fid, i[1], i[2],
+                            i[3], switch.vendor
+                        )
     elif switch.vendor == 'cisco':
         fcns_database = switch.get_fcns_database()
         if fcns_database:

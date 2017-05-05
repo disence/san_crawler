@@ -87,6 +87,7 @@ class BrocadeSwitch(SSHClient):
         self.get_switchshow = self.collect('switchshow')
         self.get_nscamshow = self.collect('nscamshow')
         self.get_fabricshow = self.collect('fabricshow')
+        self.get_fid_list = self.collect("configshow -all | grep 'Fabric ID'")
         self.filter_local_fid = self.make_single_filter(
             '(?<=FID: )\d+',
             description="""
@@ -109,14 +110,18 @@ class BrocadeSwitch(SSHClient):
         super().__init__(*args)
 
     def collect(self, command, description=''):
-        def inner():
-            i, o, e = self.client.exec_command(command)
+        def inner(fid=''):
+            if fid:
+                full_command = 'fosexec --fid {} -cmd {}'.format(fid, command)
+            else:
+                full_command = command
+            i, o, e = self.client.exec_command(full_command)
             try:
                 return o.read().decode()
             except:
                 logging.info(
                     'failed to read output of {} on {}'.format(
-                        command, self.ip
+                        full_command, self.ip
                     )
                 )
                 return ''
@@ -205,3 +210,9 @@ class BrocadeSwitch(SSHClient):
                     wwpn,
                     port_index,
                 ]
+
+    def fid_filter(self, content):
+        try:
+            return re.findall('\d+', content)
+        except:
+            return []
