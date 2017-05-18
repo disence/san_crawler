@@ -135,7 +135,7 @@ class BrocadeSwitch(SSHClient):
             if result_obj:
                 result = result_obj.group()
                 if isinstance(result, str):
-                    return result.strip(
+                    return result.strip()
             logging.error(
                 'failed to filter {} from {}'.format(pattern, content)
             )
