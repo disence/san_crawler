@@ -3,7 +3,7 @@ import paramiko
 import logging
 
 
-class SSHClient():
+class SSHClient:
     def __init__(self, ip, username, password):
         self.ip = ip
         self.username = username
@@ -135,7 +135,7 @@ class BrocadeSwitch(SSHClient):
             if result_obj:
                 result = result_obj.group()
                 if isinstance(result, str):
-                    return result.strip()
+                    return result.strip(
             logging.error(
                 'failed to filter {} from {}'.format(pattern, content)
             )
@@ -170,23 +170,18 @@ class BrocadeSwitch(SSHClient):
             switch_ip
             ]
         """
-        switch_id_pattern = re.compile('(?<= )\w{2}(?=\w{4};)')
-        wwpn_pattern = re.compile('(?<=Permanent Port Name: )\S+')
-        port_index_pattern = re.compile('(?<=Port Index: )\d+')
-
-        switch_id_list = re.findall(switch_id_pattern, nscamshow)
-        wwpn_list = re.findall(wwpn_pattern, nscamshow)
-        port_index_list = re.findall(port_index_pattern, nscamshow)
-
-        length = len(switch_id_list)
-        if all(len(x) == length for x in [wwpn_list, port_index_list]):
-            for i in range(0, length):
+        for n in nscamshow.split("\n"):
+            if re.match("\s+N\s+", n):
+                (switch_id, _, wwpn, *__) = n.split(";")
+                switch_id = switch_id.split()[1][0:2]
                 for full_id in fabric_map.keys():
-                    if full_id.endswith(switch_id_list[i]):
+                    if full_id.endswith(switch_id):
                         break
+            if "Port Index:" in n:
+                port_index = re.search("\d+", n).group()
                 yield [
-                    wwpn_list[i],
-                    port_index_list[i],
+                    wwpn,
+                    port_index,
                     fabric_map[full_id]['name'],
                     fabric_map[full_id]['ip']
                 ]

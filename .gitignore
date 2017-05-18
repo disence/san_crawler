@@ -68,3 +68,6 @@ tags
 cscope.out
 
 migrations/
+
+#Pycharm
+.idea
