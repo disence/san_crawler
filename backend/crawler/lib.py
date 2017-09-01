@@ -3,31 +3,23 @@ import paramiko
 import logging
 
 
-class SSHClient:
-    def __init__(self, ip, username, password):
+class SSHClient(paramiko.client.SSHClient):
+    def __init__(self, ip, username, password, *args):
         self.ip = ip
         self.username = username
         self.password = password
-        self.client = paramiko.client.SSHClient()
-        self.client.set_missing_host_key_policy(
+        super().__init__(*args)
+        self.set_missing_host_key_policy(
             paramiko.client.AutoAddPolicy()
         )
 
     def connect(self):
-        try:
-            self.client.connect(
-                self.ip,
-                username=self.username,
-                password=self.password,
-                timeout=20
-            )
-            return True
-        except:
-            logging.error('failed to connect to {}'.format(self.ip))
-            return False
-
-    def disconnect(self):
-        self.client.close()
+        super().connect(
+            self.ip,
+            username=self.username,
+            password=self.password,
+            timeout=20
+        )
 
 
 class CiscoSwitch(SSHClient):
@@ -38,7 +30,7 @@ class CiscoSwitch(SSHClient):
     def get_fcns_database(self):
         command = 'show fcns database detail'
         try:
-            return self.client.exec_command(command)[1].read().decode()
+            return self.exec_command(command)[1].read().decode()
         except:
             logging.info('failed to get fcns database from {}'.format(self.ip))
             return ''
@@ -115,7 +107,7 @@ class BrocadeSwitch(SSHClient):
                 full_command = 'fosexec --fid {} -cmd {}'.format(fid, command)
             else:
                 full_command = command
-            i, o, e = self.client.exec_command(full_command)
+            i, o, e = self.exec_command(full_command)
             try:
                 return o.read().decode()
             except:

@@ -5,7 +5,6 @@ from pull import write_into_redis, worker
 import redis
 
 
-@unittest.skip
 class TestBrocadeSwitchMethods(unittest.TestCase):
 
     def setUp(self):
@@ -40,7 +39,7 @@ class TestBrocadeSwitchMethods(unittest.TestCase):
         self.assertTrue(isinstance(flogin_info, types.GeneratorType))
 
     def tearDown(self):
-        self.sw.disconnect()
+        self.sw.close()
 
 
 @unittest.skip
@@ -67,6 +66,7 @@ class TestWriteIntoRedis(unittest.TestCase):
         self.assertIn('test_wwpn', self.redis_client.keys())
 
 
+@unittest.skip
 class Integration(unittest.TestCase):
 
     def setUp(self):
