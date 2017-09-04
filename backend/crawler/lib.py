@@ -14,12 +14,19 @@ class SSHClient(paramiko.client.SSHClient):
         )
 
     def connect(self):
-        super().connect(
-            self.ip,
-            username=self.username,
-            password=self.password,
-            timeout=20
-        )
+        try:
+            super().connect(
+                self.ip,
+                username=self.username,
+                password=self.password,
+                timeout=20
+            )
+            return True
+        except paramiko.ssh_exception.AuthenticationException:
+            logging.error('wrong credential')
+            return False
+        except paramiko.ssh_exception.SSHException:
+            return False
 
 
 class CiscoSwitch(SSHClient):

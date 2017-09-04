@@ -59,7 +59,7 @@ def worker(switch, redis_client):
         if fcns_database:
             for i in switch.fcns_analyze(fcns_database):
                 write_into_redis(redis_client, *i, switch.vendor)
-    switch.disconnect()
+    switch.close()
 
 
 if __name__ == '__main__':
