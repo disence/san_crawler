@@ -29,6 +29,7 @@ def worker(switch, redis_client):
     if not switch.connect():
         logging.error('Failed to login to {}'.format(switch.ip))
         return False
+    logging.info('Login to {} successfully.'.format(switch.ip))
     if switch.vendor == 'brocade':
         fid_list = switch.fid_filter(switch.get_fid_list())
         for fid in fid_list:
