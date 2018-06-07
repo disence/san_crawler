@@ -86,7 +86,6 @@ class BrocadeSwitch(SSHClient):
         self.get_switchshow = self.collect('switchshow')
         self.get_nscamshow = self.collect('nscamshow')
         self.get_fabricshow = self.collect('fabricshow')
-        self.get_fid_list = self.collect("configshow -all | grep 'Fabric ID'")
         self.filter_local_fid = self.make_single_filter(
             '(?<=FID: )\d+',
             description="""
@@ -205,8 +204,13 @@ class BrocadeSwitch(SSHClient):
                     port_index,
                 ]
 
-    def fid_filter(self, content):
-        try:
-            return re.findall('\d+', content)
-        except:
-            return []
+    def get_fid_list(self):
+        possible_cmd = [
+            "configshow -all | grep 'Fabric ID'",
+            "configshow | grep 'Fabric ID'"
+        ]
+        fid_list = []
+        for cmd in possible_cmd:
+            i, o, e = self.exec_command(cmd)
+            fid_list += re.findall('\d+', o.read().decode())
+        return fid_list

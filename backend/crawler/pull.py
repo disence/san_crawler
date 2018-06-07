@@ -31,7 +31,7 @@ def worker(switch, redis_client):
         return False
     logging.info('Login to {} successfully.'.format(switch.ip))
     if switch.vendor == 'brocade':
-        fid_list = switch.fid_filter(switch.get_fid_list())
+        fid_list = switch.get_fid_list()
         for fid in fid_list:
             nscamshow = switch.get_nscamshow(fid=fid)
             switchshow = switch.get_switchshow(fid=fid)
