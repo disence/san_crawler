@@ -27,7 +27,7 @@ def write_into_redis(
 
 def worker(switch, redis_client):
     if not switch.connect():
-        logging.error(f'Failed to login to {switch.ip}')
+        logging.error('Failed to login to {}'.format(switch.ip))
         return False
     if switch.vendor == 'brocade':
         fid_list = switch.fid_filter(switch.get_fid_list())
