@@ -37,47 +37,44 @@ class CiscoSwitch(SSHClient):
     def get_fcns_database(self):
         command = 'show fcns database detail'
         try:
-            return self.exec_command(command)[1].read().decode()
+            self.fcns = self.exec_command(command)[1].read().decode()
         except:
             logging.info('failed to get fcns database from {}'.format(self.ip))
-            return ''
+            self.fcns = ''
 
-    def fcns_analyze(self, fcnsdatabase):
-        wwpn_pattern = re.compile(
-            '(?<=port-wwn \(vendor\)           :)\w{2}(:\w{2}){7}'
-        )
-        vsan_pattern = re.compile('(?<=VSAN:)\d+')
-        port_pattern = re.compile('(?<=connected interface         :).+')
-        sw_pattern = re.compile('(?<=switch name \(IP address\)    :).+')
-        ip_pattern = re.compile('\d+(\.\d+){3}')
+    def fcns_analyze(self):
 
-        def search_or_default(pattern, content):
-            default_value = ''
-            result = pattern.search(content)
-            if result:
-                return result.group()
-            else:
-                return default_value
+        def _analyze_record(raw):
+            wwpn_pattern = '(?P<wwpn>\w{2}(:\w{2}){7})'
+            record = {}
+            if 'VSAN' not in raw:
+                return {}
+            for line in raw.split('\n'):
+                if 'port-wwn' in line:
+                    try:
+                        record.update(wwpn=re.search(wwpn_pattern, line).end('wwpn'))
+                    except AttributeError:
+                        # no wwpn means no record
+                        return {}
 
-        for entry in re.split('-{24}(?=\nVSAN)', fcnsdatabase):
-            if 'VSAN' not in entry:
-                continue
-            wwpn, vsan_id, port, switch = [
-                search_or_default(x, entry) for x in [
-                    wwpn_pattern,
-                    vsan_pattern,
-                    port_pattern,
-                    sw_pattern
-                ]
-            ]
-            ip_search_result = ip_pattern.search(switch)
-            if ip_search_result:
-                switch_ip = ip_search_result.group()
-                switch_name = switch.split('(')[0].strip()
-            else:
-                switch_ip = ''
-                switch_name = switch
-            yield [wwpn, vsan_id, port, switch_name, switch_ip]
+                elif 'VSAN:' in line:
+                    record.update(vsan=line.split(':')[-1].strip())
+                elif 'connected interface' in line:
+                    record.update(port=line.split(':')[-1].strip())
+                elif 'switch name (IP address)' in line:
+                    switch_name_and_ip = line.split(':')[-1].strip())
+                    if '(' in switch_name_and_ip:
+                        record.update(switch_ip=switch_name_and_ip.split('(')[-1].split(')')[0])
+                        record.update(switchname=switch_name_and_ip.split('(')[0].strip())
+                    else:
+                        record.update(switch_ip='')
+                        record.update(switch_name=switch_name_and_ip)
+            return record
+
+        for block in re.split('-{24}(?=\nVSAN)', self.fcns):
+            record = _analyze_record(block)
+            if record:
+                yield record
 
 
 class BrocadeSwitch(SSHClient):
