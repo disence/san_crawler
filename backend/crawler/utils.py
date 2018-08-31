@@ -36,8 +36,10 @@ class CiscoSwitch(SSHClient):
         self.vendor = 'cisco'
         self.fcns = ''
         super().__init__(*args, **kwargs)
+        self.connect()
+        self._get_fcns_database()
 
-    def get_fcns_database(self):
+    def _get_fcns_database(self):
         """
         This function dumps fcns databse from the Cisco Switch.
         """
@@ -45,8 +47,7 @@ class CiscoSwitch(SSHClient):
         try:
             self.fcns = self.exec_command(command)[1].read().decode()
         except paramiko.ssh_exception.SSHException:
-            logging.info(f'failed to get fcns database from {self.ip}')
-            self.fcns = ''
+            logging.error(f'failed to get fcns database from {self.ip}')
 
     def get_wwpn_location(self):
         """
@@ -81,6 +82,8 @@ class CiscoSwitch(SSHClient):
                         record.update(switch_name=switch_name_and_ip)
             return record
 
+        if not self.fcns:
+            return None
         for block in re.split('-{24}(?=\nVSAN)', self.fcns):
             record = _analyze_record(block)
             if record:
