@@ -1,7 +1,7 @@
 import re
 import logging
-from itertools import chain
 import paramiko
+from threading import Thread
 
 
 class SSHClient(paramiko.client.SSHClient):
@@ -140,10 +140,16 @@ class BrocadeSwitch(SSHClient):
     def get_wwpn_location(self):
         self._spawn_vswitch()
         locations = list()
+        threads = list()
         for vswitch in self.vswitches:
-            vswitch.get_wwpn_location()
+            t = Thread(target=vswitch.get_wwpn_location)
+            threads.append(t)
+            t.start()
+        for x in threads:
+            x.join()
+        for vswitch in self.vswitches:
             locations += vswitch.all_wwpn
-        return chain(*locations)
+        return locations
 
 class BrocadeVirtualSwitch(BrocadeSwitch):
     def __init__(self, ip, username, password, fid, **kwargs):
@@ -153,6 +159,7 @@ class BrocadeVirtualSwitch(BrocadeSwitch):
         self.switchname = ''
         self.fabricshow = ''
         self.fabric_members = list()
+        self.local_wwpn = list()
         self.all_wwpn = list()
         super().__init__(ip, username, password, **kwargs)
         self.connect()
@@ -199,12 +206,14 @@ class BrocadeVirtualSwitch(BrocadeSwitch):
             port_index = line.split()[0]
             wwpn_search = re.search(self.wwpn_pattern, line)
             if wwpn_search:
-                yield dict(
-                    port_index=port_index,
-                    wwpn=wwpn_search.group(),
-                    switch_name=self.switchname,
-                    switch_ip=self.ip,
-                    fid=self.fid
+                self.local_wwpn.append(
+                    dict(
+                        port_index=port_index,
+                        wwpn=wwpn_search.group(),
+                        switch_name=self.switchname,
+                        switch_ip=self.ip,
+                        fid=self.fid
+                    )
                 )
 
     def get_wwpn_location(self):
@@ -213,9 +222,15 @@ class BrocadeVirtualSwitch(BrocadeSwitch):
         """
         self._get_fabricshow()
         self._get_fabric_members()
+        threads = list()
+        member_switches = list()
         for member in self.fabric_members:
-            if member == self.ip:
-                self.all_wwpn.append(self.get_flogin_wwpn())
-            else:
-                M = BrocadeVirtualSwitch(member, self.username, self.password, self.fid)
-                self.all_wwpn.append(M.get_flogin_wwpn())
+            member_switch = BrocadeVirtualSwitch(member, self.username, self.password, self.fid)
+            t = Thread(target=member_switch.get_flogin_wwpn)
+            threads.append(t)
+            member_switches.append(member_switch)
+            t.start()
+        for x in threads:
+            x.join()
+        for member_switch in member_switches:
+            self.all_wwpn += member_switch.local_wwpn
