@@ -90,23 +90,37 @@ class CiscoSwitch(SSHClient):
                 yield record
 
 
-class BrocadeVirtualSwitch(SSHClient):
-    def __init__(self, ip, username, password, fid, **kwargs):
-        self.wwpn_pattern = r'\w{2}(:\w{2}){7}'
-        self.fid = fid
-        self.switchshow = ''
-        self.switchname = ''
-        self.fabricshow = ''
-        self.fabric_members = list()
-        super().__init__(ip, username, password, **kwargs)
+class BrocadeSwitch(SSHClient):
+    def __init__(self, *args, **kwargs):
+        self.vendor = 'brocade'
+        self.fid_list = list()
+        self.vswitches = list()
+        super().__init__(*args, **kwargs)
         self.connect()
-        self._get_switchshow()
-        self._get_switch_name()
 
-    def _get_command_output(self, command):
+    def _get_fid_list(self):
+        possible_cmd = [
+            "configshow -all | grep 'Fabric ID'",
+            "configshow | grep 'Fabric ID'"
+        ]
+        fid_list = []
+        for cmd in possible_cmd:
+            output = self._get_command_output(cmd)
+            if output:
+                fid_list += re.findall(r'\d+', output)
+        self.fid_list = fid_list
+
+    def _spawn_vswitch(self):
+        self._get_fid_list()
+        for fid in self.fid_list:
+            self.vswitches.append(BrocadeVirtualSwitch(self.ip, self.username, self.password, fid))
+
+    def _get_command_output(self, command, fid=None):
         """
         This function helps to get the output of a command as a string.
         """
+        if fid:
+            command = f'fosexec --fid {fid} -cmd {command}'
         try:
             _, o, e = self.exec_command(command)
         except paramiko.ssh_exception.SSHException as error:
@@ -122,6 +136,29 @@ class BrocadeVirtualSwitch(SSHClient):
         if output:
             return output.decode()
         return None
+
+    def get_wwpn_location(self):
+        self._spawn_vswitch()
+        locations = list()
+        for vswitch in self.vswitches:
+            vswitch.get_wwpn_location()
+            locations += vswitch.all_wwpn
+        return chain(*locations)
+
+class BrocadeVirtualSwitch(BrocadeSwitch):
+    def __init__(self, ip, username, password, fid, **kwargs):
+        self.wwpn_pattern = r'\w{2}(:\w{2}){7}'
+        self.fid = fid
+        self.switchshow = ''
+        self.switchname = ''
+        self.fabricshow = ''
+        self.fabric_members = list()
+        self.all_wwpn = list()
+        super().__init__(ip, username, password, **kwargs)
+        self.connect()
+
+    def _get_command_output(self, command):
+        return super()._get_command_output(command, fid=self.fid)
 
     def _get_switch_name(self):
         for line in self.switchshow.split("\n"):
@@ -154,6 +191,8 @@ class BrocadeVirtualSwitch(SSHClient):
         """
         retrive flogin wwpn from switchshow
         """
+        self._get_switchshow()
+        self._get_switch_name()
         for line in self.switchshow.split('===\n')[-1].split('\n'):
             if 'Online' not in line:
                 continue
@@ -174,44 +213,9 @@ class BrocadeVirtualSwitch(SSHClient):
         """
         self._get_fabricshow()
         self._get_fabric_members()
-        locations = list()
         for member in self.fabric_members:
             if member == self.ip:
-                locations.append(self.get_flogin_wwpn())
+                self.all_wwpn.append(self.get_flogin_wwpn())
             else:
                 M = BrocadeVirtualSwitch(member, self.username, self.password, self.fid)
-                locations.append(M.get_flogin_wwpn())
-        return chain(*locations)
-
-
-class BrocadeSwitch(BrocadeVirtualSwitch):
-    def __init__(self, *args, **kwargs):
-        self.vendor = 'brocade'
-        self.fid_list = list()
-        self.vswitches = list()
-        super().__init__(*args, **kwargs)
-        self.connect()
-
-    def _get_fid_list(self):
-        possible_cmd = [
-            "configshow -all | grep 'Fabric ID'",
-            "configshow | grep 'Fabric ID'"
-        ]
-        fid_list = []
-        for cmd in possible_cmd:
-            output = self._get_command_output(cmd)
-            if output:
-                fid_list += re.findall(r'\d+', output)
-        self.fid_list = fid_list
-
-    def _spawn_vswitch(self):
-        self._get_fid_list()
-        for fid in self.fid_list:
-            self.vswitches.append(BrocadeVirtualSwitch(self.ip, self.username, self.password, fid))
-
-    def get_wwpn_location(self):
-        self._spawn_vswitch()
-        locations = list()
-        for vswitch in self.vswitches:
-            locations.append(vswitch.get_wwpn_location())
-        return chain(*locations)
+                self.all_wwpn.append(M.get_flogin_wwpn())
