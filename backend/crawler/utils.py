@@ -50,7 +50,7 @@ class CiscoSwitch(SSHClient):
         except paramiko.ssh_exception.SSHException:
             logging.error(f'failed to get fcns database from {self.ip}')
 
-    def get_wwpn_location(self):
+    def get_all_wwpn(self):
         """
         This function analyzes fcns database and retuns a generator which yield
         a dict once a time for each WWPN discovered in the fabric.
