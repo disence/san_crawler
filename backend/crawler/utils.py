@@ -2,6 +2,7 @@ import re
 import logging
 import paramiko
 from threading import Thread
+from itertools import chain
 
 
 class SSHClient(paramiko.client.SSHClient):
@@ -93,27 +94,8 @@ class CiscoSwitch(SSHClient):
 class BrocadeSwitch(SSHClient):
     def __init__(self, *args, **kwargs):
         self.vendor = 'brocade'
-        self.fid_list = list()
-        self.vswitches = list()
         super().__init__(*args, **kwargs)
         self.connect()
-
-    def _get_fid_list(self):
-        possible_cmd = [
-            "configshow -all | grep 'Fabric ID'",
-            "configshow | grep 'Fabric ID'"
-        ]
-        fid_list = []
-        for cmd in possible_cmd:
-            output = self._get_command_output(cmd)
-            if output:
-                fid_list += re.findall(r'\d+', output)
-        self.fid_list = fid_list
-
-    def _spawn_vswitch(self):
-        self._get_fid_list()
-        for fid in self.fid_list:
-            self.vswitches.append(BrocadeVirtualSwitch(self.ip, self.username, self.password, fid))
 
     def _get_command_output(self, command, fid=None):
         """
@@ -137,19 +119,18 @@ class BrocadeSwitch(SSHClient):
             return output.decode()
         return None
 
-    def get_wwpn_location(self):
-        self._spawn_vswitch()
-        locations = list()
-        threads = list()
-        for vswitch in self.vswitches:
-            t = Thread(target=vswitch.get_wwpn_location)
-            threads.append(t)
-            t.start()
-        for x in threads:
-            x.join()
-        for vswitch in self.vswitches:
-            locations += vswitch.all_wwpn
-        return locations
+    def get_fid_list(self):
+        self.fid_list = list()
+        possible_cmd = [
+            "configshow -all | grep 'Fabric ID'",
+            "configshow | grep 'Fabric ID'"
+        ]
+        fid_list = []
+        for cmd in possible_cmd:
+            output = self._get_command_output(cmd)
+            if output:
+                fid_list += re.findall(r'\d+', output)
+        self.fid_list = fid_list
 
 class BrocadeVirtualSwitch(BrocadeSwitch):
     def __init__(self, ip, username, password, fid, **kwargs):
@@ -158,79 +139,100 @@ class BrocadeVirtualSwitch(BrocadeSwitch):
         self.switchshow = ''
         self.switchname = ''
         self.fabricshow = ''
-        self.fabric_members = list()
-        self.local_wwpn = list()
-        self.all_wwpn = list()
+        self.fabricmap = list()
         super().__init__(ip, username, password, **kwargs)
-        self.connect()
+        self._get_switchshow()
+        self._get_fabricshow()
+        self._get_nscamshow()
+        self._get_switchname()
+        self._get_fabricmap()
+
 
     def _get_command_output(self, command):
         return super()._get_command_output(command, fid=self.fid)
 
-    def _get_switch_name(self):
+    def _get_switchshow(self):
+        self.switchshow = self._get_command_output('switchshow')
+
+    def _get_fabricshow(self):
+        self.fabricshow = self._get_command_output('fabricshow')
+
+    def _get_nscamshow(self):
+        self.nscamshow= self._get_command_output('nscamshow')
+
+    def _get_switchname(self):
         for line in self.switchshow.split("\n"):
             if line.startswith('switchName:'):
                 self.switchname = line.split(":")[-1].strip()
 
-    def _get_switchshow(self):
-        raw = self._get_command_output('switchshow')
-        if raw:
-            self.switchshow = raw
-        else:
-            logging.error(f'unable to get switchshow of {self.ip}')
+    def _get_fabricmap(self):
+        for line in self.fabricshow.split('-\n')[-1].split('\n'):
+            if ':' in line:
+                items = line.split()
+                self.fabricmap.append(
+                    dict(
+                        switch_id=items[1],
+                        switch_ip=items[3],
+                        switch_name=items[5].strip('>" ')
+                    )
+                )
 
-    def _get_fabricshow(self):
-        raw = self._get_command_output('fabricshow')
-        if raw:
-            self.fabricshow = raw
-        else:
-            logging.error(f'unable to get fabricshow of {self.ip}')
-
-    def _get_fabric_members(self):
-        raw = self._get_command_output('fabricshow')
-        if raw:
-            raw = raw.split('-\n')[-1]
-            for line in raw.split('\n'):
-                if ":" in line:
-                    self.fabric_members.append(line.split()[3])
+    def get_plogin_wwpn(self):
+        """
+Example of the nscamshow:
+    N    172a07;    2,3;c0:50:76:05:09:6b:00:66;c0:50:76:05:09:6b:00:66;
+        Fabric Port Name: 20:2e:00:05:33:69:62:02
+        Permanent Port Name: 10:00:00:00:c9:a1:82:bd
+        Port Index: 46
+        Share Area: No
+        Device Shared in Other AD: No
+        Redirect: No
+        Partial: No
+    N    172a08;    2,3;c0:50:76:05:09:6b:00:72;c0:50:76:05:09:6b:00:72;
+        Fabric Port Name: 20:2e:00:05:33:69:62:02
+        Permanent Port Name: 10:00:00:00:c9:a1:82:bd
+        Port Index: 46
+        Share Area: No
+        Device Shared in Other AD: No
+        Redirect: No
+        Partial: No
+        """
+        for n in self.nscamshow.split("\n"):
+            if re.match(r"\s+N\s+", n):
+                (fc_id, _, wwpn, *__) = n.split(";")
+                switch_id = fc_id.split()[1][0:2]
+                for i in self.fabricmap:
+                    if i["switch_id"].endswith(switch_id):
+                        break
+            if "Port Index:" in n:
+                port_index = re.search(r"\d+", n).group()
+                yield dict(
+                    port_index=port_index,
+                    wwpn=wwpn,
+                    switch_name=i["switch_name"],
+                    switch_ip=i["switch_ip"],
+                    fid=self.fid
+                )
 
     def get_flogin_wwpn(self):
         """
         retrive flogin wwpn from switchshow
         """
-        self._get_switchshow()
-        self._get_switch_name()
         for line in self.switchshow.split('===\n')[-1].split('\n'):
             if 'Online' not in line:
                 continue
             port_index = line.split()[0]
             wwpn_search = re.search(self.wwpn_pattern, line)
             if wwpn_search:
-                self.local_wwpn.append(
-                    dict(
-                        port_index=port_index,
-                        wwpn=wwpn_search.group(),
-                        switch_name=self.switchname,
-                        switch_ip=self.ip,
-                        fid=self.fid
-                    )
+                yield dict(
+                    port_index=port_index,
+                    wwpn=wwpn_search.group(),
+                    switch_name=self.switchname,
+                    switch_ip=self.ip,
+                    fid=self.fid
                 )
-
-    def get_wwpn_location(self):
-        """
-        This generator yields other generators who yield the actual wwpn records
-        """
-        self._get_fabricshow()
-        self._get_fabric_members()
-        threads = list()
-        member_switches = list()
-        for member in self.fabric_members:
-            member_switch = BrocadeVirtualSwitch(member, self.username, self.password, self.fid)
-            t = Thread(target=member_switch.get_flogin_wwpn)
-            threads.append(t)
-            member_switches.append(member_switch)
-            t.start()
-        for x in threads:
-            x.join()
-        for member_switch in member_switches:
-            self.all_wwpn += member_switch.local_wwpn
+    def get_all_wwpn(self):
+        return chain(
+            self.get_flogin_wwpn(),
+            self.get_plogin_wwpn()
+        )
