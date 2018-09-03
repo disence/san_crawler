@@ -1,4 +1,5 @@
 import re
+import socket
 import logging
 import paramiko
 from threading import Thread
@@ -11,6 +12,7 @@ class SSHClient(paramiko.client.SSHClient):
         self.username = username
         self.password = password
         self.fid_list = list()
+        self.connected = False
         super().__init__(*args)
         self.set_missing_host_key_policy(
             paramiko.client.AutoAddPolicy()
@@ -24,12 +26,13 @@ class SSHClient(paramiko.client.SSHClient):
                 password=self.password,
                 timeout=20
             )
-            return True
+            self.connected = True
         except paramiko.ssh_exception.AuthenticationException:
             logging.error('wrong credential')
-            return False
-        except paramiko.ssh_exception.SSHException:
-            return False
+        except paramiko.ssh_exception.SSHException as e:
+            logging.error(e)
+        except socket.timeout as e:
+            logging.error(e)
 
 
 class CiscoSwitch(SSHClient):
@@ -55,6 +58,7 @@ class CiscoSwitch(SSHClient):
         This function analyzes fcns database and retuns a generator which yield
         a dict once a time for each WWPN discovered in the fabric.
         """
+
 
         def _analyze_record(raw):
             wwpn_pattern = r'\w{2}(:\w{2}){7}'
@@ -83,8 +87,10 @@ class CiscoSwitch(SSHClient):
                         record.update(switch_name=switch_name_and_ip)
             return record
 
+        if not self.connected:
+            return list()
         if not self.fcns:
-            return None
+            return list()
         for block in re.split('-{24}(?=\nVSAN)', self.fcns):
             record = _analyze_record(block)
             if record:
@@ -232,6 +238,8 @@ Example of the nscamshow:
                     fid=self.fid
                 )
     def get_all_wwpn(self):
+        if not self.connected:
+            return list()
         return chain(
             self.get_flogin_wwpn(),
             self.get_plogin_wwpn()

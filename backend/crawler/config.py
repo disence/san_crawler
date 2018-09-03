@@ -1,7 +1,16 @@
-from lib import BrocadeSwitch, CiscoSwitch
+from utils import BrocadeSwitch, CiscoSwitch
 
-search_scope = [
-    # take the following lines as an example
-    CiscoSwitch('10.228.104.13', 'emc', 'Emc12345'),
-    BrocadeSwitch('10.228.96.102', 'Elab', 'Elab0123'),
+cisco = [
+    ('10.228.99.131', 'emc', 'Emc12345'),
 ]
+
+brocade = [
+    ('10.228.99.11', 'emc', 'Elab0123'),
+]
+
+mongo = {
+    "host": "10.228.107.11",
+    "port": 32768
+}
+
+interval = 60
