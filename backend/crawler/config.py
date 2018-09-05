@@ -10,7 +10,9 @@ brocade = [
 
 mongo = {
     "host": "10.228.107.11",
-    "port": 32768
+    "port": 32768,
+    "db": "wwpn_info",
+    "collection": "locations"
 }
 
 interval = 60

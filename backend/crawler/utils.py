@@ -62,7 +62,7 @@ class CiscoSwitch(SSHClient):
 
         def _analyze_record(raw):
             wwpn_pattern = r'\w{2}(:\w{2}){7}'
-            record = {}
+            record = dict(switch_vendor=self.vendor)
             if 'VSAN' not in raw:
                 return {}
             for line in raw.split('\n'):
@@ -217,7 +217,8 @@ Example of the nscamshow:
                     wwpn=wwpn,
                     switch_name=i["switch_name"],
                     switch_ip=i["switch_ip"],
-                    fid=self.fid
+                    fid=self.fid,
+                    switch_vendor=self.vendor
                 )
 
     def get_flogin_wwpn(self):
@@ -235,7 +236,8 @@ Example of the nscamshow:
                     wwpn=wwpn_search.group(),
                     switch_name=self.switchname,
                     switch_ip=self.ip,
-                    fid=self.fid
+                    fid=self.fid,
+                    switch_vendor=self.vendor
                 )
     def get_all_wwpn(self):
         if not self.connected:
