@@ -9,6 +9,14 @@ import pymongo
 
 
 def work_flow(switch, db):
+
+    def _write_into_db(wwpn_item, db, collection):
+        existed = db[collection].find_one({"wwpn": wwpn_item["wwpn"]})
+        if existed:
+            db[collection].replace_one({"wwpn": wwpn_item["wwpn"]}, wwpn_item)
+        else:
+            db[collection].insert_one(wwpn_item)
+
     if switch.vendor == 'brocade':
         switch.get_fid_list()
         switch.close()
@@ -21,19 +29,11 @@ def work_flow(switch, db):
             )
 
             for x in vswitch.get_all_wwpn():
-                old = db[vswitch.vendor].find_one({"wwpn": x["wwpn"]})
-                if old:
-                    db[vswitch.vendor].replace_one({"wwpn": x["wwpn"]}, x)
-                else:
-                    db[vswitch.vendor].insert_one(x)
+                _write_into_db(x, db, vswitch.vendor)
             vswitch.close()
     elif switch.vendor == 'cisco':
         for x in switch.get_all_wwpn():
-            old = db[switch.vendor].find_one({"wwpn": x["wwpn"]})
-            if old:
-                db[switch.vendor].replace_one({"wwpn": x["wwpn"]}, x)
-            else:
-                db[switch.vendor].insert_one(x)
+            _write_into_db(x, db, switch.vendor)
         switch.close()
 
 if __name__ == '__main__':
