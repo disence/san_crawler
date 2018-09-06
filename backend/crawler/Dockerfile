@@ -1,5 +1,5 @@
-FROM alpine:3.5
-RUN apk add --no-cache python3 py3-paramiko
+FROM python:3.6-alpine3.7
+RUN apk add --no-cache py3-paramiko
 ADD . /code
 WORKDIR /code
 

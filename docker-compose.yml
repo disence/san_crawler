@@ -11,10 +11,10 @@ services:
     ports:
       - "8888:8888"
     depends_on:
-      - redis
+      - mongo
   crawler:
     build: backend/crawler
     depends_on:
-      - redis
-  redis:
-    image: "redis:3.0"
+      - mongo
+  mongo:
+    image: "mongo:latest"

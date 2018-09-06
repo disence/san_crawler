@@ -4,8 +4,8 @@ import os
 import pymongo
 
 mongo = {
-    "host": "10.228.107.11",
-    "port": 32768,
+    "host": "mongo",
+    "port": 27017,
     "db": "wwpn_info",
     "collection": "locations"
 }
