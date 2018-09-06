@@ -1,7 +1,14 @@
 import tornado.web
 import tornado.ioloop
-import redis
 import os
+import pymongo
+
+mongo = {
+    "host": "10.228.107.11",
+    "port": 32768,
+    "db": "wwpn_info",
+    "collection": "locations"
+}
 
 if __name__ == '__main__':
 
@@ -11,17 +18,21 @@ if __name__ == '__main__':
 
         def get(self, wwpn):
             wwpn = wwpn.lower()
-            result = r.hgetall(wwpn) or {}
-            self.write(result)
+            query_result = collection.find_one({"wwpn": wwpn}, {"_id": 0}) or {}
+            self.write(query_result)
 
     class ListHandler(tornado.web.RequestHandler):
         def set_default_headers(self):
             self.set_header("Access-Control-Allow-Origin", "*")
 
         def get(self, pattern):
+            query_result = collection.find(
+                {"wwpn": {'$regex': f'.*{pattern}.*'}},
+                {"wwpn": 1, "_id": 0}
+            )
             self.write(
                 {
-                    'wwpn_list':r.keys("*{}*".format(pattern.lower()))
+                    'wwpn_list': list(map(lambda x: x["wwpn"], query_result))
                 }
             )
 
@@ -32,12 +43,9 @@ if __name__ == '__main__':
         ])
 
     if __name__ == "__main__":
-        r = redis.StrictRedis(
-            host='redis',
-            port=6379,
-            decode_responses=True,
-            db=0
-        )
+        client = pymongo.MongoClient(mongo["host"], mongo["port"])
+        db = client[mongo["db"]]
+        collection = db[mongo["collection"]]
 
         app = make_app()
         app.listen(8888)
