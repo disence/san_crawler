@@ -1,5 +1,5 @@
-FROM alpine:3.5
-RUN apk add --no-cache python3 py3-paramiko
+FROM alpine:3.8
+RUN apk add --no-cache python3
 ADD . /code
 WORKDIR /code
 EXPOSE 8888
