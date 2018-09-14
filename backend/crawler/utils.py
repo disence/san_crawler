@@ -175,12 +175,13 @@ class BrocadeVirtualSwitch(BrocadeSwitch):
         for line in self.fabricshow.split('-\n')[-1].split('\n'):
             if ':' in line:
                 items = line.split()
-                self.fabricmap.append(
-                    dict(
-                        switch_id=items[1],
-                        switch_ip=items[3],
-                        switch_name=items[5].strip('>" ')
-                    )
+                if len(items) == 6:
+                    self.fabricmap.append(
+                        dict(
+                            switch_id=items[1],
+                            switch_ip=items[3],
+                            switch_name=items[5].strip('>" ')
+                        )
                 )
 
     def get_plogin_wwpn(self):
