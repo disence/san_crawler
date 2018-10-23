@@ -1,48 +1,29 @@
-from threading import Thread
+import asyncio
 import datetime
 import time
-from utils import BrocadeVirtualSwitch, CiscoSwitch, BrocadeSwitch
+from utils import CiscoSwitch, BrocadeSwitch
 import config
 import logging
 import sys
-import pymongo
+from motor.motor_asyncio import AsyncIOMotorClient
 
 
-def work_flow(switch, collection):
+async def write_into_db(wwpn_item, collection):
+    record = wwpn_item.copy()
+    chengdu = datetime.timezone(datetime.timedelta(hours=8))
+    record.update(dict(timestamp=datetime.datetime.now(chengdu).strftime('%c')))
 
-    def _write_into_db(wwpn_item, collection):
-        chengdu = datetime.timezone(datetime.timedelta(hours=8))
-        wwpn_item.update(dict(timestamp=datetime.datetime.now(chengdu).strftime('%c')))
+    existed = await collection.find_one({"wwpn": record["wwpn"]})
+    if existed:
+        await collection.replace_one({"wwpn": record["wwpn"]}, record)
+    else:
+        await collection.insert_one(record)
 
-        existed = collection.find_one({"wwpn": wwpn_item["wwpn"]})
-        if existed:
-            collection.replace_one({"wwpn": wwpn_item["wwpn"]}, wwpn_item)
-        else:
-            collection.insert_one(wwpn_item)
-
-    if switch.vendor == 'brocade':
-        switch.get_fid_list()
-        switch.close()
-        for fid in switch.fid_list:
-            vswitch = BrocadeVirtualSwitch(
-                switch.ip,
-                switch.username,
-                switch.password,
-                fid
-            )
-
-            for x in vswitch.get_all_wwpn():
-                _write_into_db(x, collection)
-            vswitch.close()
-    elif switch.vendor == 'cisco':
-        for x in switch.get_all_wwpn():
-            _write_into_db(x, collection)
-        switch.close()
 
 def init_db(mongo):
-    db_clinet = pymongo.MongoClient(mongo["host"], mongo["port"])
+    db_clinet = AsyncIOMotorClient(mongo["host"], mongo["port"])
     db = db_clinet[mongo["db"]]
-    db[mongo["collection"]].create_index([('wwpn', pymongo.ASCENDING)], unique=True)
+    # db[mongo["collection"]].create_index([('wwpn', pymongo.ASCENDING)], unique=True)
     return db[mongo["collection"]]
 
 if __name__ == '__main__':
@@ -51,21 +32,28 @@ if __name__ == '__main__':
         handlers=[logging.StreamHandler(sys.stdout)],
         level=logging.INFO
     )
+    loop = asyncio.get_event_loop()
 
     while True:
         logging.info('Pull circle Start')
-        threads = []
-        for i in config.cisco:
-            threads.append(Thread(target=work_flow, args=(CiscoSwitch(*i), collection)))
-        for i in config.brocade:
-            threads.append(Thread(target=work_flow, args=(BrocadeSwitch(*i), collection)))
+        CISCO = [CiscoSwitch(*i) for i in config.cisco]
+        BROCADE = [BrocadeSwitch(*i) for i in config.brocade]
+        ALL = CISCO + BROCADE
 
-        for t in threads:
-            t.start()
-
-        for t in threads:
-            t.join()
-
+        loop.run_until_complete(
+            asyncio.wait([i.get_all_wwpn() for i in ALL])
+        )
         logging.info('Pull circle End')
+        logging.info('Dumping data to DB...')
+        for i in CISCO:
+            loop.run_until_complete(
+                asyncio.wait([write_into_db(x, collection) for x in i.wwpn])
+            )
 
+        for i in BROCADE:
+            for vswitch in i.vf_data:
+                loop.run_until_complete(
+                    asyncio.wait([write_into_db(x, collection) for x in vswitch.wwpn])
+                )
+        logging.info('Dumping data complete')
         time.sleep(config.interval)

@@ -1,6 +1,7 @@
 import re
 import logging
 import asyncssh
+from itertools import chain
 
 
 class CiscoSwitch():
@@ -60,3 +61,157 @@ class CiscoSwitch():
         async with asyncssh.connect(self.ip, username=self.username, password=self.password, known_hosts=None) as self.session:
             await self._get_fcns_database()
         self.wwpn = self._analyze_record()
+
+
+class BrocadeSwitch():
+    def __init__(self, ip, username, password):
+        self.ip = ip
+        self.username = username
+        self.password = password
+        self.session = None
+        self.vendor = 'brocade'
+        self.vf_list = list()
+        self.vf_data = list()
+    async def _get_command_output(self, command, vf):
+        command = f'fosexec --fid {vf} -cmd {command}'
+        try:
+            result = await self.session.run(command)
+            if result.stdout:
+                return result.stdout
+        except asyncssh.Error as e:
+            logging.error(e)
+        return ''
+
+    async def _get_switchshow(self, vf):
+        return await self._get_command_output('switchshow', vf)
+
+    async def _get_nscamshow(self, vf):
+        return await self._get_command_output('nscamshow', vf)
+
+    async def _get_fabricshow(self, vf):
+        return await self._get_command_output('fabricshow', vf)
+
+    async def _get_vf_list(self):
+        possible_cmd = [
+            "configshow -all | grep 'Fabric ID'",
+            "configshow | grep 'Fabric ID'"
+        ]
+        for cmd in possible_cmd:
+            try:
+                result = await self.session.run(cmd)
+                if result.stdout:
+                    self.vf_list += re.findall(r'\d+', result.stdout)
+            except asyncssh.Error as e:
+                logging.error(e)
+
+    async def get_all_wwpn(self):
+        async with asyncssh.connect(
+            self.ip,
+            username=self.username,
+            password=self.password,
+            known_hosts=None
+        ) as self.session:
+            await self._get_vf_list()
+            for vf in self.vf_list:
+                self.vf_data.append(
+                    BrocadeVF(
+                        self.ip,
+                        vf,
+                        nscamshow=await self._get_nscamshow(vf),
+                        switchshow=await self._get_switchshow(vf),
+                        fabricshow=await self._get_fabricshow(vf)
+                    )
+                )
+
+
+class BrocadeVF():
+    def __init__(self, ip, vf, nscamshow='', switchshow='', fabricshow=''):
+        self.ip = ip
+        self.vendor = 'brocade'
+        self.fid = vf
+        self.nscamshow = nscamshow
+        self.switchshow = switchshow
+        self.fabricshow = fabricshow
+        self.switchname = ''
+        self.fabricmap = list()
+        self.wwpn_pattern = r'\w{2}(:\w{2}){7}'
+        self._get_switchname()
+        self._get_fabricmap()
+        self.flogin_wwpn = self.get_flogin_wwpn()
+        self.plogin_wwpn = self.get_plogin_wwpn()
+        self.wwpn = chain( self.flogin_wwpn, self.plogin_wwpn)
+
+    def _get_switchname(self):
+        for line in self.switchshow.split("\n"):
+            if line.startswith('switchName:'):
+                self.switchname = line.split(":")[-1].strip()
+
+    def _get_fabricmap(self):
+        for line in self.fabricshow.split('-\n')[-1].split('\n'):
+            if ':' in line:
+                items = line.split()
+                if len(items) == 6:
+                    self.fabricmap.append(
+                        dict(
+                            switch_id=items[1],
+                            switch_ip=items[3],
+                            switch_name=items[5].strip('>" ')
+                        )
+                    )
+
+    def get_plogin_wwpn(self):
+        """
+        Example of the nscamshow:
+            N    172a07;    2,3;c0:50:76:05:09:6b:00:66;c0:50:76:05:09:6b:00:66;
+                Fabric Port Name: 20:2e:00:05:33:69:62:02
+                Permanent Port Name: 10:00:00:00:c9:a1:82:bd
+                Port Index: 46
+                Share Area: No
+                Device Shared in Other AD: No
+                Redirect: No
+                Partial: No
+            N    172a08;    2,3;c0:50:76:05:09:6b:00:72;c0:50:76:05:09:6b:00:72;
+                Fabric Port Name: 20:2e:00:05:33:69:62:02
+                Permanent Port Name: 10:00:00:00:c9:a1:82:bd
+                Port Index: 46
+                Share Area: No
+                Device Shared in Other AD: No
+                Redirect: No
+                Partial: No
+        """
+        for n in self.nscamshow.split("\n"):
+            if re.match(r"\s+N\s+", n):
+                (fc_id, _, wwpn, *__) = n.split(";")
+                switch_id = fc_id.split()[1][0:2]
+                for i in self.fabricmap:
+                    if i["switch_id"].endswith(switch_id):
+                        break
+            if "Port Index:" in n:
+                port_index = re.search(r"\d+", n).group()
+                yield dict(
+                    port_index=port_index,
+                    wwpn=wwpn,
+                    switch_name=i["switch_name"],
+                    switch_ip=i["switch_ip"],
+                    fid=self.fid,
+                    switch_vendor=self.vendor
+                )
+
+    def get_flogin_wwpn(self):
+        """
+        retrive flogin wwpn from switchshow
+        """
+        for line in self.switchshow.split('===\n')[-1].split('\n'):
+            if 'Online' not in line:
+                continue
+            port_index = line.split()[0]
+            wwpn_search = re.search(self.wwpn_pattern, line)
+            if wwpn_search:
+                yield dict(
+                    port_index=port_index,
+                    wwpn=wwpn_search.group(),
+                    switch_name=self.switchname,
+                    switch_ip=self.ip,
+                    fid=self.fid,
+                    switch_vendor=self.vendor
+                )

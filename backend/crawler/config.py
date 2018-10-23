@@ -1,5 +1,3 @@
-from utils import BrocadeSwitch, CiscoSwitch
-
 cisco = [
     ('10.228.99.131', 'emc', 'Emc12345'),
 ]
