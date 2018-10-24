@@ -46,14 +46,20 @@ if __name__ == '__main__':
         logging.info('Pull circle End')
         logging.info('Dumping data to DB...')
         for i in CISCO:
-            loop.run_until_complete(
-                asyncio.wait([write_into_db(x, collection) for x in i.wwpn])
-            )
+            try:
+                loop.run_until_complete(
+                    asyncio.wait([write_into_db(x, collection) for x in i.wwpn])
+                )
+            except ValueError:
+                logging.error(f'Failed to collect wwpn from {i.ip}')
 
         for i in BROCADE:
             for vswitch in i.vf_data:
-                loop.run_until_complete(
-                    asyncio.wait([write_into_db(x, collection) for x in vswitch.wwpn])
-                )
+                try:
+                    loop.run_until_complete(
+                        asyncio.wait([write_into_db(x, collection) for x in vswitch.wwpn])
+                    )
+                except ValueError:
+                    logging.error(f'Failed to collect wwpn from vswitch {vswitch.ip} -- {vswitch.fid}')
         logging.info('Dumping data complete')
         time.sleep(config.interval)
