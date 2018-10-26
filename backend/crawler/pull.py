@@ -50,7 +50,7 @@ if __name__ == '__main__':
                 loop.run_until_complete(
                     asyncio.wait([write_into_db(x, collection) for x in i.wwpn])
                 )
-            except ValueError:
+            except (ValueError, TypeError):
                 logging.error(f'Failed to collect wwpn from {i.ip}')
 
         for i in BROCADE:
@@ -59,7 +59,7 @@ if __name__ == '__main__':
                     loop.run_until_complete(
                         asyncio.wait([write_into_db(x, collection) for x in vswitch.wwpn])
                     )
-                except ValueError:
+                except (ValueError, TypeError):
                     logging.error(f'Failed to collect wwpn from vswitch {vswitch.ip} -- {vswitch.fid}')
         logging.info('Dumping data complete')
         time.sleep(config.interval)
