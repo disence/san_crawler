@@ -16,8 +16,15 @@ class CiscoSwitch():
 
     def _analyze_record(self):
         wwpn_pattern = r'\w{2}(:\w{2}){7}'
-        record = dict(switch_vendor=self.vendor)
         for raw in re.split('-{24}(?=\nVSAN)', self.fcns):
+            record = dict(
+                switch_vendor=self.vendor,
+                switch_ip='',
+                switch_name='',
+                port='',
+                vsan='',
+                wwpn=''
+            )
             if 'VSAN' not in raw:
                 continue
             for line in raw.split('\n'):
@@ -26,7 +33,7 @@ class CiscoSwitch():
                         record.update(wwpn=re.search(wwpn_pattern, line).group())
                     except AttributeError:
                         # no wwpn means no record
-                        return {}
+                        break
 
                 elif 'VSAN:' in line:
                     record.update(vsan=line.split(':')[1].split()[0])
@@ -36,11 +43,13 @@ class CiscoSwitch():
                     switch_name_and_ip = line.split(':')[-1].strip()
                     if '(' in switch_name_and_ip:
                         record.update(switch_ip=switch_name_and_ip.split('(')[-1].split(')')[0])
-                        record.update(switchname=switch_name_and_ip.split('(')[0].strip())
+                        record.update(switch_name=switch_name_and_ip.split('(')[0].strip())
                     else:
                         record.update(switch_ip='')
                         record.update(switch_name=switch_name_and_ip)
-            yield record
+
+            if record.get('wwpn'):
+                yield record
 
     async def _get_fcns_database(self):
         """
