@@ -27,7 +27,7 @@ if __name__ == '__main__':
 
         def get(self, pattern):
             query_result = collection.find(
-                {"wwpn": {'$regex': f'.*{pattern}.*'}},
+                {"wwpn": {'$regex': f'/.*{pattern}.*/i'}},
                 {"wwpn": 1, "_id": 0}
             )
             self.write(
