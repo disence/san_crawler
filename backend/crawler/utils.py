@@ -188,23 +188,26 @@ class BrocadeVF():
                 Redirect: No
                 Partial: No
         """
-        for n in self.nscamshow.split("\n"):
-            if re.match(r"\s+N\s+", n):
-                (fc_id, _, wwpn, *__) = n.split(";")
-                switch_id = fc_id.split()[1][0:2]
-                for i in self.fabricmap:
-                    if i["switch_id"].endswith(switch_id):
-                        break
-            if "Port Index:" in n:
-                port_index = re.search(r"\d+", n).group()
-                yield dict(
-                    port_index=port_index,
-                    wwpn=wwpn,
-                    switch_name=i["switch_name"],
-                    switch_ip=i["switch_ip"],
-                    fid=self.fid,
-                    switch_vendor=self.vendor
-                )
+        if not self.fabricmap:
+            yield dict()
+        else:
+            for n in self.nscamshow.split("\n"):
+                if re.match(r"\s+N\s+", n):
+                    (fc_id, _, wwpn, *__) = n.split(";")
+                    switch_id = fc_id.split()[1][0:2]
+                    for i in self.fabricmap:
+                        if i["switch_id"].endswith(switch_id):
+                            break
+                if "Port Index:" in n:
+                    port_index = re.search(r"\d+", n).group()
+                    yield dict(
+                        port_index=port_index,
+                        wwpn=wwpn,
+                        switch_name=i["switch_name"],
+                        switch_ip=i["switch_ip"],
+                        fid=self.fid,
+                        switch_vendor=self.vendor
+                    )
 
     def get_flogin_wwpn(self):
         """
