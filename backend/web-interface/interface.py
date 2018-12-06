@@ -2,6 +2,7 @@ import tornado.web
 import tornado.ioloop
 import os
 import pymongo
+import re
 
 mongo = {
     "host": "mongo",
@@ -26,8 +27,9 @@ if __name__ == '__main__':
             self.set_header("Access-Control-Allow-Origin", "*")
 
         def get(self, pattern):
+            regx = re.compile(f'.*{pattern}.*', re.IGNORECASE)
             query_result = collection.find(
-                {"wwpn": {'$regex': f'.*{pattern}.*'}},
+                {"wwpn": regx},
                 {"wwpn": 1, "_id": 0}
             )
             self.write(
