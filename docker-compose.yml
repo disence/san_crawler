@@ -1,4 +1,4 @@
-version: '2'
+version: '3'
 services:
   web:
     build: frontend/web_client
@@ -18,3 +18,4 @@ services:
       - mongo
   mongo:
     image: "mongo:latest"
+    
