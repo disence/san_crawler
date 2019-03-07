@@ -13,6 +13,8 @@ class CiscoSwitch():
         self.password = password
         self.session = None
         self.wwpn = None
+        self.node_symb = '',
+        self.link_speed = '',
 
     def _analyze_record(self):
         wwpn_pattern = r'\w{2}(:\w{2}){7}'
@@ -23,7 +25,9 @@ class CiscoSwitch():
                 switch_name='',
                 port='',
                 vsan='',
-                wwpn=''
+                wwpn='',
+                node_symb='',
+                link_speed='',
             )
             if 'VSAN' not in raw:
                 continue
@@ -47,7 +51,10 @@ class CiscoSwitch():
                     else:
                         record.update(switch_ip='')
                         record.update(switch_name=switch_name_and_ip)
-
+                elif 'symbolic-port-name' in line:
+                    record.update(node_symb=line.split(':')[-1].strip())
+                elif 'Device Link speed' in line:
+                    record.update(link_speed=line.split(':')[-1].strip())
             if record.get('wwpn'):
                 yield record
 
@@ -70,7 +77,6 @@ class CiscoSwitch():
         async with asyncssh.connect(self.ip, username=self.username, password=self.password, known_hosts=None) as self.session:
             await self._get_fcns_database()
         self.wwpn = self._analyze_record()
-
 
 class BrocadeSwitch():
     def __init__(self, ip, username, password):
@@ -103,7 +109,7 @@ class BrocadeSwitch():
     async def _get_vf_list(self):
         possible_cmd = [
             "configshow -all | grep 'Fabric ID'",
-            "configshow | grep 'Fabric ID'"
+            "configshow | grep 'Fabric ID'",
         ]
         for cmd in possible_cmd:
             try:
@@ -132,7 +138,6 @@ class BrocadeSwitch():
                     )
                 )
 
-
 class BrocadeVF():
     def __init__(self, ip, vf, nscamshow='', switchshow='', fabricshow=''):
         self.ip = ip
@@ -149,6 +154,8 @@ class BrocadeVF():
         self.flogin_wwpn = self.get_flogin_wwpn()
         self.plogin_wwpn = self.get_plogin_wwpn()
         self.wwpn = chain( self.flogin_wwpn, self.plogin_wwpn)
+        self.node_symb = ''
+        self.link_speed = ''
 
     def _get_switchname(self):
         for line in self.switchshow.split("\n"):
@@ -198,10 +205,16 @@ class BrocadeVF():
                     for i in self.fabricmap:
                         if i["switch_id"].endswith(switch_id):
                             break
+                if "NodeSymb:" in n:
+                    node_symb = n.split(":")[1].strip()
                 if "Port Index:" in n:
                     port_index = re.search(r"\d+", n).group()
+                if "Device Link speed:" in n:
+                    speed = n.split(":")[1].strip()
                     yield dict(
                         port_index=port_index,
+                        node_symb=node_symb,
+                        link_speed=speed,
                         wwpn=wwpn,
                         switch_name=i["switch_name"],
                         switch_ip=i["switch_ip"],
@@ -220,10 +233,12 @@ class BrocadeVF():
             wwpn_search = re.search(self.wwpn_pattern, line)
             if wwpn_search:
                 yield dict(
-                    port_index=port_index,
-                    wwpn=wwpn_search.group(),
-                    switch_name=self.switchname,
+                    switch_vendor=self.vendor,
                     switch_ip=self.ip,
+                    switch_name=self.switchname,
+                    port_index=port_index,
                     fid=self.fid,
-                    switch_vendor=self.vendor
+                    wwpn=wwpn_search.group(),
+                    node_symb=self.node_symb,
+                    link_speed=self.link_speed,
                 )
