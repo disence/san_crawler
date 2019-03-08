@@ -224,12 +224,30 @@ class BrocadeVF():
 
     def get_flogin_wwpn(self):
         """
-        retrive flogin wwpn from switchshow
+        retrive flogin wwpn from switchshow output
+        
+        Index Port Address  Media Speed   State       Proto
+        ==================================================
+        4   4   120000   id    N16	  Online      FC  F-Port  10:00:e4:11:5b:a7:51:b5 
+        5   5   120100   id    N16	  No_Sync     FC  Disabled (Port Throttled)
+
+        Index Slot Port Address Media  Speed        State    Proto
+        ============================================================
+        60    4   12   01f0c0   id    N16	  Online      FC  E-Port  10:00:c4:f5:7c:39:66:e2 "E2E25_BL4_242107_106AB-H1-SW3" (downstream)
+        61    4   13   01f080   id    N16	  Online      FC  E-Port  10:00:c4:f5:7c:39:75:70 "E2E26_BL4_242108_106AB-H1-SW4" (downstream）
+
         """
+        header = self.switchshow.split('===\n')[0].split('\n')[-2]
+        if 'Index' not in header:
+            logging.error('failed to parse switchshow output detail')
+
         for line in self.switchshow.split('===\n')[-1].split('\n'):
             if 'Online' not in line:
                 continue
-            port_index = line.split()[0]
+            if 'Slot' in header:
+                port_index = f'{line.split()[1]}/{line.split()[2]}'
+            else:
+                port_index = line.split()[1]
             wwpn_search = re.search(self.wwpn_pattern, line)
             if wwpn_search:
                 yield dict(
