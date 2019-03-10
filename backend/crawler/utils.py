@@ -20,6 +20,7 @@ class CiscoSwitch():
         wwpn_pattern = r'\w{2}(:\w{2}){7}'
         for raw in re.split('-{24}(?=\nVSAN)', self.fcns):
             record = dict(
+                timestamp='',
                 switch_vendor=self.vendor,
                 switch_ip='',
                 switch_name='',
@@ -87,8 +88,9 @@ class BrocadeSwitch():
         self.vendor = 'brocade'
         self.vf_list = list()
         self.vf_data = list()
+
     async def _get_command_output(self, command, vf):
-        command = f'fosexec --fid {vf} -cmd {command}'
+        command = f'fosexec --fid {vf} -cmd "{command}"'
         try:
             result = await self.session.run(command)
             if result.stdout:
@@ -118,31 +120,89 @@ class BrocadeSwitch():
                     self.vf_list += re.findall(r'\d+', result.stdout)
             except asyncssh.Error as e:
                 logging.error(e)
+    
+    async def _get_aliShow(self, vf, pattern='*'):
+        """
+        Returns dictionary with alias name as key and it's members as values. pattern '*' will return all alias
+        """
+        aliases = {}
+        output = await self._get_command_output(f'aliShow {pattern}', vf)
+        if output and not re.search('does not exist', output, re.IGNORECASE):
+            alias_regex = re.compile('alias:(.*)')
+            wwpn_regex = re.compile(r'\w{2}(:\w{2}){7}')
+            alias_key = None
+            content = False
+
+            for line in output.split('\n'):
+                line = line.strip()
+                if alias_regex.search(line):
+                    alias_key = alias_regex.search(line).group(1).strip()
+                    content = True
+                elif content and wwpn_regex.search(line) and alias_key:
+                    aliases[alias_key] = wwpn_regex.search(line).group()
+            return aliases
+
+    async def _get_zoneShow(self, vf, alias_to_wwpn, pattern='*'):
+        """
+        Returns dictionary with zone name as key and it's members as values.
+        """
+        zones = {}
+        output = await self._get_command_output(f'zoneShow {pattern}', vf)
+
+        if output and not re.search('does not exist', output, re.IGNORECASE):
+            zone_regex = re.compile('zone:(.*)')
+            wwpn_regex = re.compile(r'\w{2}(:\w{2}){7}')
+            zone_key = None
+            zone_values = []
+
+            for line in output.split('\n'):
+                line = line.strip()
+                if zone_regex.search(line):
+                    zone_key = zone_regex.search(line).group(1).strip()
+                    zone_values = []
+                elif zone_key and line:
+                    items = [x.strip() for x in line.split(';') if x]
+                    if items:
+                        for i in items:
+                            # if wwpn_regex.search(i): #when no alias name exist
+                            #     zone_values.append(i)
+                            # else:
+                            zone_values.append( i +' => '+ alias_to_wwpn.get(i,'NA') )
+                if zone_key and zone_values:
+                    zones[zone_key] = zone_values
+            return zones
 
     async def get_all_wwpn(self):
         async with asyncssh.connect(
             self.ip,
             username=self.username,
             password=self.password,
-            known_hosts=None
+            known_hosts=None,
         ) as self.session:
             await self._get_vf_list()
             for vf in self.vf_list:
+                alias_to_wwpn = await self._get_aliShow(vf)
+                wwpn_to_alias = {val:key for (key,val) in alias_to_wwpn.items()}
                 self.vf_data.append(
                     BrocadeVF(
                         self.ip,
                         vf,
+                        alias=wwpn_to_alias,
+                        zones=await self._get_zoneShow(vf, alias_to_wwpn),
                         nscamshow=await self._get_nscamshow(vf),
                         switchshow=await self._get_switchshow(vf),
-                        fabricshow=await self._get_fabricshow(vf)
+                        fabricshow=await self._get_fabricshow(vf),
+                        
                     )
                 )
 
 class BrocadeVF():
-    def __init__(self, ip, vf, nscamshow='', switchshow='', fabricshow=''):
+    def __init__(self, ip, vf, alias, zones, nscamshow='', switchshow='', fabricshow=''):
         self.ip = ip
         self.vendor = 'brocade'
         self.fid = vf
+        self.alias = alias
+        self.zones = zones
         self.nscamshow = nscamshow
         self.switchshow = switchshow
         self.fabricshow = fabricshow
@@ -154,8 +214,10 @@ class BrocadeVF():
         self.flogin_wwpn = self.get_flogin_wwpn()
         self.plogin_wwpn = self.get_plogin_wwpn()
         self.wwpn = chain( self.flogin_wwpn, self.plogin_wwpn)
+        self.alias_name = 'NA'
         self.node_symb = ''
         self.link_speed = ''
+        
 
     def _get_switchname(self):
         for line in self.switchshow.split("\n"):
@@ -174,6 +236,15 @@ class BrocadeVF():
                             switch_name=items[5].strip('>" ')
                         )
                     )
+
+    def get_KeysByValue(self, valueToFind):
+        listOfKeys = list()
+        dictOfElements = self.zones
+        listOfItems = dictOfElements.items()
+        for item in listOfItems:
+            if ( ' '.join(item[1]) ).find(valueToFind) > 0:
+                listOfKeys.append(item[0])
+        return  listOfKeys
 
     def get_plogin_wwpn(self):
         """
@@ -200,7 +271,7 @@ class BrocadeVF():
         else:
             for n in self.nscamshow.split("\n"):
                 if re.match(r"\s+N\s+", n):
-                    (fc_id, _, wwpn, *__) = n.split(";")
+                    (fc_id, _, t_wwpn, *__) = n.split(";")
                     switch_id = fc_id.split()[1][0:2]
                     for i in self.fabricmap:
                         if i["switch_id"].endswith(switch_id):
@@ -211,15 +282,19 @@ class BrocadeVF():
                     port_index = re.search(r"\d+", n).group()
                 if "Device Link speed:" in n:
                     speed = n.split(":")[1].strip()
+                    alias_name=self.alias.get(t_wwpn)
                     yield dict(
+                        timestamp='',
+                        switch_vendor=self.vendor,
+                        switch_ip=i["switch_ip"],
+                        switch_name=i["switch_name"],
                         port_index=port_index,
+                        fid=self.fid,
+                        wwpn=t_wwpn,
+                        alias_name=alias_name,
                         node_symb=node_symb,
                         link_speed=speed,
-                        wwpn=wwpn,
-                        switch_name=i["switch_name"],
-                        switch_ip=i["switch_ip"],
-                        fid=self.fid,
-                        switch_vendor=self.vendor
+                        zones=self.get_KeysByValue(t_wwpn),
                     )
 
     def get_flogin_wwpn(self):
@@ -236,7 +311,7 @@ class BrocadeVF():
         60    4   12   01f0c0   id    N16	  Online      FC  E-Port  10:00:c4:f5:7c:39:66:e2 "E2E25_BL4_242107_106AB-H1-SW3" (downstream)
         61    4   13   01f080   id    N16	  Online      FC  E-Port  10:00:c4:f5:7c:39:75:70 "E2E26_BL4_242108_106AB-H1-SW4" (downstream）
 
-        """
+        """      
         header = self.switchshow.split('===\n')[0].split('\n')[-2]
         if 'Index' not in header:
             logging.error('failed to parse switchshow output detail')
@@ -249,14 +324,18 @@ class BrocadeVF():
             else:
                 port_index = line.split()[1]
             wwpn_search = re.search(self.wwpn_pattern, line)
+            t_wwpn = wwpn_search.group()
             if wwpn_search:
                 yield dict(
+                    timestamp='',
                     switch_vendor=self.vendor,
                     switch_ip=self.ip,
                     switch_name=self.switchname,
                     port_index=port_index,
                     fid=self.fid,
-                    wwpn=wwpn_search.group(),
+                    wwpn=t_wwpn,
+                    alias_name=self.alias.get(t_wwpn),
                     node_symb=self.node_symb,
                     link_speed=self.link_speed,
+                    zones=self.get_KeysByValue(t_wwpn),
                 )
