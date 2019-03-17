@@ -13,11 +13,43 @@ class CiscoSwitch():
         self.password = password
         self.session = None
         self.wwpn = None
-        self.node_symb = '',
-        self.link_speed = '',
+        self.node_symb = ''
+        self.link_speed = ''
+        self.device_alias = {}
+        self.zones_dict = {}
+
+    def get_KeysByValue(self, valueToFind):
+        listOfKeys = list()
+        dictOfElements = self.zones_dict
+        listOfItems = dictOfElements.items()
+        for item in listOfItems:
+            if ( ' '.join(item[1]) ).find(valueToFind) > 0:
+                listOfKeys.append(item[0])
+        return  listOfKeys
 
     def _analyze_record(self):
+        '''
+            ------------------------
+            VSAN:1     FCID:0x050000
+            ------------------------
+            port-wwn (vendor)           :10:00:00:2a:6a:b9:cf:31 (Cisco)     
+            node-wwn                    :20:00:00:2a:6a:b9:cf:30
+            class                       :2,3
+            node-ip-addr                :0.0.0.0
+            ipa                         :ff ff ff ff ff ff ff ff
+            fc4-types:fc4_features      :ipfc 
+            symbolic-port-name          :
+            symbolic-node-name          :
+            port-type                   :N 
+            port-ip-addr                :0.0.0.0
+            fabric-port-wwn             :20:00:00:2a:6a:b9:cf:32
+            hard-addr                   :0x000000
+            permanent-port-wwn (vendor) :00:00:00:00:00:00:00:00             
+            connected interface         :vsan1 (sup-fc0)
+            switch name (IP address)    :E2E05-CL4-9940-102AD-V25 (10.228.99.40)
+        '''
         wwpn_pattern = r'\w{2}(:\w{2}){7}'
+        wwpn_to_alias = { val:key for (key,val) in self.device_alias.items()}
         for raw in re.split('-{24}(?=\nVSAN)', self.fcns):
             record = dict(
                 timestamp='',
@@ -29,6 +61,8 @@ class CiscoSwitch():
                 wwpn='',
                 node_symb='',
                 link_speed='',
+                alias_name='',
+                zones=[],
             )
             if 'VSAN' not in raw:
                 continue
@@ -57,26 +91,92 @@ class CiscoSwitch():
                 elif 'Device Link speed' in line:
                     record.update(link_speed=line.split(':')[-1].strip())
             if record.get('wwpn'):
+                record.update( alias_name=wwpn_to_alias.get(record.get('wwpn'),'') )
+                record.update( zones=self.get_KeysByValue(record.get('wwpn')) )
                 yield record
+
+    async def _get_command_output(self, command):
+        command = f"{command}"
+        try:
+            result = await self.session.run(command)
+            if result.stdout:
+                return result.stdout
+        except asyncssh.Error as e:
+            logging.error(e)
+        return ''
+
+    async def _get_alias_database(self):
+        """
+        Returns dictionary with alias name as key and it's members as values.
+        device-alias name Alias_test pwwn 10:00:00:00:00:00:00:12
+        device-alias name A_HUS110_0A pwwn 50:06:0e:80:10:5b:5f:50
+        """
+        aliases = {}
+        output = await self._get_command_output(f'show device-alias database')
+        if output and not re.search('does not exist', output, re.IGNORECASE):
+            alias_regex = re.compile('device-alias (.*)')
+            wwpn_regex = re.compile(r'\w{2}(:\w{2}){7}')
+
+            for line in output.split('\n'):
+                line = line.strip()
+                if alias_regex.search(line) and wwpn_regex.search(line):
+                    content = alias_regex.search(line).group(1).split(' ')
+                    if content[1] and content[3]:
+                        aliases[f'{content[1]}'] = content[3]
+            return aliases
 
     async def _get_fcns_database(self):
         """
         This function dumps fcns databse from the Cisco Switch.
         """
-        command = 'show fcns database detail'
-        try:
-            result = await self.session.run(command)
-            self.fcns = result.stdout
-        except asyncssh.Error as e:
-            logging.error(e)
+        return await self._get_command_output(f'show fcns database detail')
+
+    async def _get_zones(self, alias):
+        """
+        Returns dictionary with zone name as key and it's members as values.
+        zone name Z_temp_host25 vsan 25
+        pwwn 10:00:00:00:00:00:00:25 [temp_host25]
+
+        zone name E2E_L4_10050_HBA0_P1_FNM3252_SPAB_P1_2 vsan 25
+        device-alias H_E2E_L4_10050_HBA0_P1
+        device-alias A_FNM3252_SPA1_2
+        """
+        t_zones = {}
+        output = await self._get_command_output(f'show zone')
+
+        if output and not re.search('does not exist', output, re.IGNORECASE):
+            zone_regex = re.compile('zone(.*)')
+            alias_regex = re.compile('device-alias(.*)')
+            zone_key = None
+            zone_values = []
+
+            for line in output.split('\n'):
+                line = line.strip()
+                if zone_regex.search(line):
+                    content = zone_regex.search(line).group(1).split()
+                    zone_key = content[1]
+                    zone_values = []
+                elif zone_key and alias_regex.search(line):
+                    device = alias_regex.search(line).group(1).strip()
+                    zone_values.append( device +' => '+ alias.get(device,'NA') )
+                if zone_key and zone_values:
+                    t_zones[zone_key] = zone_values
+            return t_zones
 
     async def get_all_wwpn(self):
         """
         This function analyzes fcns database and retuns a generator which yield
         a dict once a time for each WWPN discovered in the fabric.
         """
-        async with asyncssh.connect(self.ip, username=self.username, password=self.password, known_hosts=None) as self.session:
-            await self._get_fcns_database()
+        async with asyncssh.connect(
+            self.ip,
+            username=self.username,
+            password=self.password,
+            known_hosts=None,
+        ) as self.session:
+            self.fcns = await self._get_fcns_database()
+            self.device_alias = await self._get_alias_database()
+            self.zones_dict = await self._get_zones(self.device_alias)
         self.wwpn = self._analyze_record()
 
 class BrocadeSwitch():
@@ -191,8 +291,7 @@ class BrocadeSwitch():
                         zones=await self._get_zoneShow(vf, alias_to_wwpn),
                         nscamshow=await self._get_nscamshow(vf),
                         switchshow=await self._get_switchshow(vf),
-                        fabricshow=await self._get_fabricshow(vf),
-                        
+                        fabricshow=await self._get_fabricshow(vf),  
                     )
                 )
 
@@ -217,8 +316,7 @@ class BrocadeVF():
         self.alias_name = 'NA'
         self.node_symb = ''
         self.link_speed = ''
-        
-
+ 
     def _get_switchname(self):
         for line in self.switchshow.split("\n"):
             if line.startswith('switchName:'):
