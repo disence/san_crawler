@@ -11,6 +11,7 @@ angular.
 						$http.get(api_url + '/list/' + self.querystr).then(function(response) {
 							self.result = response.data.wwpn_list;
 							self.details = {};
+							self.zones = '';
 						});
 					}
 				};
@@ -18,6 +19,12 @@ angular.
 					self.selected = wwpn;
 					$http.get(api_url + '/wwpn/' + wwpn).then(function(response) {
 						self.details = response.data;
+						self.zones = response.data.zones;
+						delete self.details.zones;
+						if(self.details){
+							self.key = 'Switch parameter';
+							self.value = 'Value';
+						}
 					});
 				};
 			}
