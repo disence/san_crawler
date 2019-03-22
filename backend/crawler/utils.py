@@ -288,7 +288,7 @@ class BrocadeSwitch():
                         self.ip,
                         vf,
                         alias=wwpn_to_alias,
-                        zones=await self._get_zoneShow(vf, alias_to_wwpn),
+                        zones_dict=await self._get_zoneShow(vf, alias_to_wwpn),
                         nscamshow=await self._get_nscamshow(vf),
                         switchshow=await self._get_switchshow(vf),
                         fabricshow=await self._get_fabricshow(vf),  
@@ -296,12 +296,12 @@ class BrocadeSwitch():
                 )
 
 class BrocadeVF():
-    def __init__(self, ip, vf, alias, zones, nscamshow='', switchshow='', fabricshow=''):
+    def __init__(self, ip, vf, alias, zones_dict, nscamshow='', switchshow='', fabricshow=''):
         self.ip = ip
         self.vendor = 'brocade'
         self.fid = vf
         self.alias = alias
-        self.zones = zones
+        self.zones_dict = zones_dict
         self.nscamshow = nscamshow
         self.switchshow = switchshow
         self.fabricshow = fabricshow
@@ -313,7 +313,7 @@ class BrocadeVF():
         self.flogin_wwpn = self.get_flogin_wwpn()
         self.plogin_wwpn = self.get_plogin_wwpn()
         self.wwpn = chain( self.flogin_wwpn, self.plogin_wwpn)
-        self.alias_name = 'NA'
+        self.alias_name = ''
         self.node_symb = ''
         self.link_speed = ''
  
@@ -337,7 +337,7 @@ class BrocadeVF():
 
     def get_KeysByValue(self, valueToFind):
         listOfKeys = list()
-        dictOfElements = self.zones
+        dictOfElements = self.zones_dict
         listOfItems = dictOfElements.items()
         for item in listOfItems:
             if ( ' '.join(item[1]) ).find(valueToFind) > 0:

@@ -12,6 +12,7 @@ angular.
 							self.result = response.data.wwpn_list;
 							self.details = {};
 							self.zones = '';
+							self.zone_detail = {};
 						});
 					}
 				};
@@ -25,6 +26,12 @@ angular.
 							self.key = 'Switch parameter';
 							self.value = 'Value';
 						}
+					});
+				};
+				self.showZoneDetails = function (zone) {
+					self.selected = zone;
+					$http.get(api_url + '/zone/' + zone).then(function(response) {
+						self.zone_detail = response.data;
 					});
 				};
 			}

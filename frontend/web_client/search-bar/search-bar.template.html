@@ -22,6 +22,7 @@
 		</ul>
 	</div>
 </div>
+
 <div class="row top10">
 	<div class="col-md-8 col-md-offset-2">
 		<table class="table">
@@ -41,8 +42,19 @@
 		<div class="col-md-8 col-md-offset-2">
 			<ul class="list-inline">
 				<li ng-repeat="item in $ctrl.zones" class="top5">
-					<button>{{ item }}</button>
+					<button ngClass="$ctrl.selected == item ? 'btn btn-primary' : 'btn btn-default'" ng-click="$ctrl.showZoneDetails(item)">{{ item }}</button>
 				</li>
 			</ul>
 		</div>
 </div>
+
+<div class="row top10">
+		<div class="col-md-8 col-md-offset-2">
+			<table class="table">
+				<tr ng-repeat="(k, v) in $ctrl.zone_detail">
+					<td>{{k}}</td>
+					<td>{{v}}</td>
+				</tr>
+			</table>
+		</div>
+	</div>
